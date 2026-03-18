@@ -36,13 +36,14 @@ Log "  cursor_changed_files exists: $(Test-Path $filesFile)"
 if (-not (Test-Path $filesFile)) { Log "No cursor_changed_files — nothing to commit"; exit 0 }
 
 # --- derive repo root from the first absolute path in the files list ---
-$files = Get-Content $filesFile | Where-Object { $_.Trim() -ne '' }
+$files = (Get-Content $filesFile -Raw) -split "`r?`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne '' }
 Remove-Item $filesFile -Force
 if (-not $files) { Log "cursor_changed_files is empty — nothing to commit"; exit 0 }
 
-$firstFile = $files[0].Trim()
-$gitTop = & $git -C (Split-Path $firstFile -Parent) rev-parse --show-toplevel 2>$null
-$gitTop = $gitTop -replace '/', '\'
+$firstFile = $files[0]
+$parentDir = Split-Path $firstFile -Parent
+Log "Deriving repo root from: '$parentDir'"
+$gitTop = (& $git -C "$parentDir" rev-parse --show-toplevel 2>$null) -replace '/', '\'
 Log "Repo root derived from changed files: '$gitTop'"
 if (-not $gitTop -or -not (Test-Path (Join-Path $gitTop ".git"))) {
   Log "ERROR: could not derive valid repo root from '$firstFile'"; exit 0
