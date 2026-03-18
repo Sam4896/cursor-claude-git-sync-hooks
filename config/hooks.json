@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "hooks": {
+    "stop": [
+      {
+        "command": "C:\\\\Windows\\\\System32\\\\WindowsPowerShell\\\\v1.0\\\\powershell.exe -NoProfile -ExecutionPolicy Bypass -File \"C:\\\\Users\\\\YOUR_USERNAME\\\\.cursor\\\\hooks\\\\cursor_auto_commit.ps1\"",
+        "timeout": 30
+      }
+    ]
+  }
+}

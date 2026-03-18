@@ -1,0 +1,14 @@
+# Log files
+*.log
+
+# OS-specific
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Local settings
+settings.local.json
+hooks.local.json

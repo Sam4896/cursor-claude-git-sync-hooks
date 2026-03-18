@@ -1,0 +1,17 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell -Command \"@\\\"YOUR_PROJECT_ROOT\\\\@\\\" | Set-Content \\\"$env:USERPROFILE\\\\.claude\\workspace_marker\\\" -NoNewline\"",
+            "timeout": 5,
+            "async": true
+          }
+        ]
+      }
+    ]
+  }
+}
