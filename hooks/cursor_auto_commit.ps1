@@ -1,7 +1,7 @@
 $ErrorActionPreference = "SilentlyContinue"
 
 # --- tiny logger (writes outside repos) ---
-$logDir = Join-Path $env:USERPROFILE ".cursor\\hooks"
+$logDir = Join-Path $env:USERPROFILE ".cursor\hooks"
 New-Item -ItemType Directory -Path $logDir -Force | Out-Null
 $logFile = Join-Path $logDir "cursor_auto_commit.log"
 function Log($m) {
@@ -14,129 +14,79 @@ function GetGit() {
   $cmd = Get-Command git -ErrorAction SilentlyContinue
   if ($cmd -and $cmd.Source) { return $cmd.Source }
   $candidates = @(
-    "$env:ProgramFiles\\Git\\cmd\\git.exe",
-    "$env:ProgramFiles\\Git\\bin\\git.exe",
-    "${env:ProgramFiles(x86)}\\Git\\cmd\\git.exe",
-    "${env:ProgramFiles(x86)}\\Git\\bin\\git.exe"
+    "$env:ProgramFiles\Git\cmd\git.exe",
+    "$env:ProgramFiles\Git\bin\git.exe",
+    "${env:ProgramFiles(x86)}\Git\cmd\git.exe"
   ) | Where-Object { $_ -and (Test-Path $_) }
   if ($candidates.Count -gt 0) { return $candidates[0] }
   return $null
 }
 $git = GetGit
-if (-not $git) { Log "SKIP: git.exe not found. CWD=$PWD PATH=$env:PATH"; exit 0 }
+if (-not $git) { Log "SKIP: git.exe not found"; exit 0 }
 
-# Find git repo: prefer workspace_marker written by Cursor agent, fallback to CWD walk
-$gitTop = $null
-$markerFile = Join-Path $env:USERPROFILE ".cursor\workspace_marker"
-if (Test-Path $markerFile) {
-  $candidate = (Get-Content $markerFile -Raw).Trim()
-  if ($candidate -and (Test-Path (Join-Path $candidate ".git"))) {
-    $gitTop = $candidate
-    Log "Workspace from marker: $gitTop"
-  }
+# --- read agent-written files from known location (~/.cursor/) ---
+$stateDir = Join-Path $env:USERPROFILE ".cursor"
+$msgFile   = Join-Path $stateDir "cursor_commit_msg"
+$filesFile = Join-Path $stateDir "cursor_changed_files"
+
+Log "Checking for state files in: $stateDir"
+Log "  cursor_commit_msg exists:    $(Test-Path $msgFile)"
+Log "  cursor_changed_files exists: $(Test-Path $filesFile)"
+
+if (-not (Test-Path $filesFile)) { Log "No cursor_changed_files — nothing to commit"; exit 0 }
+
+# --- derive repo root from the first absolute path in the files list ---
+$files = Get-Content $filesFile | Where-Object { $_.Trim() -ne '' }
+Remove-Item $filesFile -Force
+if (-not $files) { Log "cursor_changed_files is empty — nothing to commit"; exit 0 }
+
+$firstFile = $files[0].Trim()
+$gitTop = & $git -C (Split-Path $firstFile -Parent) rev-parse --show-toplevel 2>$null
+$gitTop = $gitTop -replace '/', '\'
+Log "Repo root derived from changed files: '$gitTop'"
+if (-not $gitTop -or -not (Test-Path (Join-Path $gitTop ".git"))) {
+  Log "ERROR: could not derive valid repo root from '$firstFile'"; exit 0
 }
-if (-not $gitTop) {
-  Log "No valid marker found, falling back to CWD walk from $PWD"
-  $searchDir = $PWD.Path
-  $depth = 0
-  while (-not $gitTop -and $depth -lt 10) {
-    if (Test-Path (Join-Path $searchDir ".git")) { $gitTop = $searchDir; break }
-    $parent = Split-Path $searchDir -Parent
-    if ($parent -eq $searchDir) { break }
-    $searchDir = $parent; $depth++
-  }
-  Log "CWD walk found: '$gitTop'"
-}
-if (-not $gitTop) { Log "ERROR: git repo not found"; exit 0 }
 
-$root = $gitTop.Replace('/', '\')
-Set-Location $root
-Log "HOOK STARTED: root=$root"
-
-$status = & $git status --porcelain 2>$null
-Log "Git status: $(($status | Measure-Object -Line).Lines) changes"
-if (-not $status) { Log "NO CHANGES - exiting"; exit 0 }
-
+Set-Location $gitTop
 $gitDir = (& $git rev-parse --absolute-git-dir 2>$null).Trim()
-if (-not $gitDir) { exit 0 }
 
-# Debug: Check what files exist in .git for our hooks
-$msgFile = Join-Path $gitDir "cursor_commit_msg"
-$filesFile = Join-Path $gitDir "cursor_changed_files"
-Log "Looking in: $gitDir"
-Log "Message file exists: $(Test-Path $msgFile)"
-Log "Changed files exist: $(Test-Path $filesFile)"
-
-# Wait up to 8s for index.lock from a concurrent git process
+# --- wait for index.lock ---
 $lock = Join-Path $gitDir "index.lock"
 $t = 0
 while ((Test-Path $lock) -and $t -lt 8) { Start-Sleep -Milliseconds 500; $t += 0.5 }
 if (Test-Path $lock) { Remove-Item $lock -Force }
 
-# Get commit message left by the Cursor agent
-# Try absolute path first, then relative path as fallback
-$msgFile = Join-Path $gitDir "cursor_commit_msg"
-$msgFileRel = ".git\cursor_commit_msg"
-Log "Checking for pre-written message at: $msgFile (or $msgFileRel)"
+# --- commit message ---
 $msg = ''
 if (Test-Path $msgFile) {
   $msg = (Get-Content $msgFile -Raw).Trim()
-  Log "Found pre-written message (absolute): $(($msg).Length) chars"
   Remove-Item $msgFile -Force
   $msg = ($msg -replace '```|<[^>]+>', '' -replace '\s+', ' ').Trim()
-  Log "Cleaned message: '$msg'"
-} elseif (Test-Path $msgFileRel) {
-  $msg = (Get-Content $msgFileRel -Raw).Trim()
-  Log "Found pre-written message (relative): $(($msg).Length) chars"
-  Remove-Item $msgFileRel -Force
-  $msg = ($msg -replace '```|<[^>]+>', '' -replace '\s+', ' ').Trim()
-  Log "Cleaned message: '$msg'"
+  Log "Commit message: '$msg'"
 }
-
-# Final fallback: timestamp
-if (-not $msg -or $msg.Length -lt 3) { $msg = "auto-commit $(Get-Date -Format 'yyyy-MM-dd HH:mm')"; Log "Using timestamp fallback: '$msg'" }
+if (-not $msg -or $msg.Length -lt 3) {
+  $msg = "auto-commit $(Get-Date -Format 'yyyy-MM-dd HH:mm')"
+  Log "Using timestamp fallback: '$msg'"
+}
 if ($msg.Length -gt 300) { $msg = $msg.Substring(0, 300).Trim() }
 
-# Stage ONLY the files the agent touched (from cursor_changed_files list)
-$filesFile = Join-Path $gitDir "cursor_changed_files"
-$filesFileRel = ".git\cursor_changed_files"
-Log "Checking for file list at: $filesFile (or $filesFileRel)"
-$filesFound = $false
-
-if (Test-Path $filesFile) {
-  $files = Get-Content $filesFile | Where-Object { $_.Trim() -ne '' }
-  Log "Found cursor_changed_files (absolute): $($files.Count) files"
-  Remove-Item $filesFile -Force
-  & $git reset HEAD 2>&1 | Out-Null
-  foreach ($f in $files) {
-    Log "Staging: $f"
-    & $git add -- $f.Trim() 2>&1 | Out-Null
-  }
-  $filesFound = $true
-} elseif (Test-Path $filesFileRel) {
-  $files = Get-Content $filesFileRel | Where-Object { $_.Trim() -ne '' }
-  Log "Found cursor_changed_files (relative): $($($files).Count) files"
-  Remove-Item $filesFileRel -Force
-  & $git reset HEAD 2>&1 | Out-Null
-  foreach ($f in $files) {
-    Log "Staging: $f"
-    & $git add -- $f.Trim() 2>&1 | Out-Null
-  }
-  $filesFound = $true
+# --- stage only agent-touched files ---
+& $git reset HEAD 2>&1 | Out-Null
+foreach ($f in $files) {
+  Log "Staging: $f"
+  & $git add -- $f.Trim() 2>&1 | Out-Null
 }
 
-if (-not $filesFound) {
-  Log "WARNING: No cursor_changed_files found - nothing staged for commit"
-}
-
-Log "Committing with message: 'Cursor: $msg'"
+# --- commit ---
+Log "Committing: 'Cursor: $msg'"
 & $git commit -m "Cursor: $msg" --quiet 2>&1 | Out-Null
 if ($LASTEXITCODE -eq 0) {
   $head = & $git rev-parse HEAD
   & $git rev-parse HEAD | Set-Content (Join-Path $gitDir "cursor_last_commit") -NoNewline
-  Log "[OK] COMMIT SUCCESS: '$msg' | HEAD=$head"
+  Log "[OK] COMMIT SUCCESS: HEAD=$head"
 } else {
-  Log "[FAIL] COMMIT ERROR: exit=$LASTEXITCODE | msg='$msg'"
+  Log "[FAIL] COMMIT ERROR: exit=$LASTEXITCODE"
 }
 
 exit 0
