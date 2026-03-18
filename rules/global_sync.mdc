@@ -1,5 +1,5 @@
 ---
-description:
+description: 
 alwaysApply: true
 ---
 
@@ -10,13 +10,16 @@ At the start of every session in a git repo, silently run these commands:
 3. If `.git/claude_last_commit` exists and differs from the Cursor bookmark, note Claude Code made changes
 
 ## After Every Response (Git Repos)
-If you modified any files in this response, write BOTH of these as your LAST action:
+If you modified any files in this response, write ALL THREE of these as your LAST action:
 
 ```powershell
-# 1. Commit message (required)
+# 1. Workspace marker (required — tells the stop hook which repo to commit in)
+Set-Content "$env:USERPROFILE\.cursor\workspace_marker" (git rev-parse --show-toplevel) -NoNewline
+
+# 2. Commit message (required)
 Set-Content .git\cursor_commit_msg "your summary here" -NoNewline
 
-# 2. Exact list of files you changed (one repo-relative path per line)
+# 3. Exact list of files you changed (one repo-relative path per line)
 @"
 path/to/file1.md
 path/to/file2.py
@@ -26,4 +29,3 @@ path/to/file2.py
 - The hook stages **only those listed files** — your manual uncommitted work is never touched
 - If you omit the file list, the hook falls back to `git add -u` (tracked files only, still safe)
 - Keep the commit message under 72 chars, imperative mood, no backticks
-- If you forget the message entirely, the hook calls claude CLI to generate one

@@ -25,23 +25,29 @@ function GetGit() {
 $git = GetGit
 if (-not $git) { Log "SKIP: git.exe not found. CWD=$PWD PATH=$env:PATH"; exit 0 }
 
-# Walk up from CWD to find git repo root
+# Find git repo: prefer workspace_marker written by Cursor agent, fallback to CWD walk
 $gitTop = $null
-$searchDir = $PWD.Path
-$depth = 0
-while (-not $gitTop -and $depth -lt 10) {
-  if (Test-Path (Join-Path $searchDir ".git")) {
-    $gitTop = $searchDir
-    break
+$markerFile = Join-Path $env:USERPROFILE ".cursor\workspace_marker"
+if (Test-Path $markerFile) {
+  $candidate = (Get-Content $markerFile -Raw).Trim()
+  if ($candidate -and (Test-Path (Join-Path $candidate ".git"))) {
+    $gitTop = $candidate
+    Log "Workspace from marker: $gitTop"
   }
-  $parent = Split-Path $searchDir -Parent
-  if ($parent -eq $searchDir) { break }
-  $searchDir = $parent
-  $depth++
 }
-
-Log "git repo search from $PWD | found at: '$gitTop' (depth=$depth)"
-if (-not $gitTop) { Log "ERROR: git repo not found in parent directories"; exit 0 }
+if (-not $gitTop) {
+  Log "No valid marker found, falling back to CWD walk from $PWD"
+  $searchDir = $PWD.Path
+  $depth = 0
+  while (-not $gitTop -and $depth -lt 10) {
+    if (Test-Path (Join-Path $searchDir ".git")) { $gitTop = $searchDir; break }
+    $parent = Split-Path $searchDir -Parent
+    if ($parent -eq $searchDir) { break }
+    $searchDir = $parent; $depth++
+  }
+  Log "CWD walk found: '$gitTop'"
+}
+if (-not $gitTop) { Log "ERROR: git repo not found"; exit 0 }
 
 $root = $gitTop.Replace('/', '\')
 Set-Location $root
