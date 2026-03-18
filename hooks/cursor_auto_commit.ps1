@@ -33,14 +33,13 @@ Log "Checking for state files in: $stateDir"
 Log "  cursor_commit_msg exists:    $(Test-Path $msgFile)"
 Log "  cursor_changed_files exists: $(Test-Path $filesFile)"
 
-if (-not (Test-Path $filesFile)) { Log "No cursor_changed_files — nothing to commit"; exit 0 }
+if (-not (Test-Path $filesFile)) { Log "No cursor_changed_files - nothing to commit"; exit 0 }
 
 # --- derive repo root from the first absolute path in the files list ---
 $raw = [System.IO.File]::ReadAllText($filesFile)
 $files = @($raw -split "`r?`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne '' })
-Log "PARSED count=$($files.Count) first='$($files[0])' type=$($files.GetType().Name)"
 Remove-Item $filesFile -Force
-if (-not $files) { Log "cursor_changed_files is empty — nothing to commit"; exit 0 }
+if (-not $files) { Log "cursor_changed_files is empty - nothing to commit"; exit 0 }
 
 $firstFile = $files[0]
 $parentDir = Split-Path $firstFile -Parent

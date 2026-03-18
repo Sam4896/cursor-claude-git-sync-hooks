@@ -94,7 +94,7 @@ if (-not $msg -or $msg.Length -lt 3) { $msg = "auto-commit $(Get-Date -Format 'y
 if ($msg.Length -gt 300) { $msg = $msg.Substring(0, 300).Trim() }
 
 # Stage only the files the agent touched, if it left a file list; otherwise
-# fall back to git add -u (tracked files only — never sweeps in your manual work)
+# fall back to git add -u (tracked files only - never sweeps in your manual work)
 $filesFile = Join-Path $gitDir "claude_changed_files"
 $filesFileRel = ".git\claude_changed_files"
 Log "Checking for file list at: $filesFile (or $filesFileRel)"
