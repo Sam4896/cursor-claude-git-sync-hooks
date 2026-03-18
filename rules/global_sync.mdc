@@ -20,9 +20,9 @@ Set-Content "$env:USERPROFILE\.cursor\cursor_commit_msg" "your summary here" -No
 @"
 D:\your-project\path\to\file1.md
 D:\your-project\path\to\file2.py
-"@ | Set-Content "$env:USERPROFILE\.cursor\cursor_changed_files"
+"@ | Set-Content "$env:USERPROFILE\.cursor\cursor_changed_files" -Encoding UTF8
 ```
 
 - Use **absolute paths** — the hook derives the repo root from these paths automatically
 - The hook stages **only those listed files** — your manual uncommitted work is never touched
-- Keep the commit message under 72 chars, imperative mood, no backticks
+- Keep the commit message under 200 chars, imperative mood, no backticks

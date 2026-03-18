@@ -36,7 +36,9 @@ Log "  cursor_changed_files exists: $(Test-Path $filesFile)"
 if (-not (Test-Path $filesFile)) { Log "No cursor_changed_files — nothing to commit"; exit 0 }
 
 # --- derive repo root from the first absolute path in the files list ---
-$files = @((Get-Content $filesFile -Raw) -split "`r?`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne '' })
+$raw = [System.IO.File]::ReadAllText($filesFile)
+$files = @($raw -split "`r?`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne '' })
+Log "PARSED count=$($files.Count) first='$($files[0])' type=$($files.GetType().Name)"
 Remove-Item $filesFile -Force
 if (-not $files) { Log "cursor_changed_files is empty — nothing to commit"; exit 0 }
 
