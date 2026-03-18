@@ -25,43 +25,23 @@ function GetGit() {
 $git = GetGit
 if (-not $git) { Log "SKIP: git.exe not found. CWD=$PWD PATH=$env:PATH"; exit 0 }
 
-# Try to find workspace root via marker file (set by Claude Code)
-# If not available, search up from home directory for recent git repos
-$markerFile = Join-Path $env:USERPROFILE ".claude\workspace_marker"
+# Walk up from CWD to find git repo root
 $gitTop = $null
-
-# Try 1: Check marker file (set by Claude Code Stop hook)
-if (Test-Path $markerFile) {
-  $gitTop = (Get-Content $markerFile -Raw).Trim()
-  if (Test-Path (Join-Path $gitTop ".git")) {
-    Log "Workspace from marker file: $gitTop"
-  } else {
-    $gitTop = $null
+$searchDir = $PWD.Path
+$depth = 0
+while (-not $gitTop -and $depth -lt 10) {
+  if (Test-Path (Join-Path $searchDir ".git")) {
+    $gitTop = $searchDir
+    break
   }
+  $parent = Split-Path $searchDir -Parent
+  if ($parent -eq $searchDir) { break }
+  $searchDir = $parent
+  $depth++
 }
 
-# Try 2: Search for most recent .cursor directory (indicates active workspace)
-if (-not $gitTop) {
-  $cursorDirs = Get-ChildItem -Path $env:USERPROFILE -Directory -Name ".cursor" -ErrorAction SilentlyContinue
-  if ($cursorDirs) {
-    # Find git repos near .cursor by searching up 1-2 levels
-    $testDir = Split-Path $env:USERPROFILE -Parent
-    for ($i = 0; $i -lt 5; $i++) {
-      if (Test-Path (Join-Path $testDir ".git")) {
-        $gitTop = $testDir
-        Log "Found git repo by searching near home: $gitTop"
-        break
-      }
-      $testDir = Split-Path $testDir -Parent
-      if ($testDir -eq (Split-Path $testDir -Parent)) { break }
-    }
-  }
-}
-
-if (-not $gitTop) {
-  Log "WARNING: Could not find workspace. Marker: $markerFile | Waiting for Claude Code to set it..."
-  exit 0
-}
+Log "git repo search from $PWD | found at: '$gitTop' (depth=$depth)"
+if (-not $gitTop) { Log "ERROR: git repo not found in parent directories"; exit 0 }
 
 $root = $gitTop.Replace('/', '\')
 Set-Location $root
@@ -105,22 +85,6 @@ if (Test-Path $msgFile) {
   Remove-Item $msgFileRel -Force
   $msg = ($msg -replace '```|<[^>]+>', '' -replace '\s+', ' ').Trim()
   Log "Cleaned message: '$msg'"
-}
-
-# No message → call claude CLI with Haiku model and 10s timeout
-if (-not $msg) {
-  Log "No message found, will try to generate one"
-  $summary = (& $git status --short 2>$null) -join ", "
-  if ($summary) {
-    Log "Calling claude with Haiku model for: $summary"
-    try {
-      $claudeOutput = & claude -p "Write a single-line git commit message, max 72 chars, imperative mood, no backticks, no prefix. Changed: $summary" --model haiku 2>&1
-      $msg = ($claudeOutput -replace '```|<[^>]+>', '' -replace '\s+', ' ').Trim()
-      Log "Claude response: '$msg'"
-    } catch {
-      Log "Claude call failed: $_"
-    }
-  }
 }
 
 # Final fallback: timestamp

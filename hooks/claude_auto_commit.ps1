@@ -89,22 +89,6 @@ if (Test-Path $msgFile) {
   Log "Cleaned message: '$msg'"
 }
 
-# No message → call claude CLI with Haiku model and 10s timeout
-if (-not $msg) {
-  Log "No message found, will try to generate one"
-  $summary = (& $git status --short 2>$null) -join ", "
-  if ($summary) {
-    Log "Calling claude with Haiku model for: $summary"
-    try {
-      $claudeOutput = & claude -p "Write a single-line git commit message, max 72 chars, imperative mood, no backticks, no prefix. Changed: $summary" --model haiku 2>&1
-      $msg = ($claudeOutput -replace '```|<[^>]+>', '' -replace '\s+', ' ').Trim()
-      Log "Claude response: '$msg'"
-    } catch {
-      Log "Claude call failed: $_"
-    }
-  }
-}
-
 # Final fallback: timestamp
 if (-not $msg -or $msg.Length -lt 3) { $msg = "auto-commit $(Get-Date -Format 'yyyy-MM-dd HH:mm')"; Log "Using timestamp fallback: '$msg'" }
 if ($msg.Length -gt 300) { $msg = $msg.Substring(0, 300).Trim() }
